@@ -65,6 +65,21 @@ Then poll:
 curl http://localhost:8000/jobs/<job_id>
 ```
 
+### 4) Open UI demo with sample data
+
+Open this URL in your browser after starting the API:
+
+```text
+http://localhost:8000/demo
+```
+
+The demo UI includes:
+
+- Built-in sample research payloads
+- One-click job submission
+- Live job status polling
+- Full JSON output rendering (summary, critique, artifacts, latencies)
+
 ## Docker
 
 ```powershell

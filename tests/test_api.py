@@ -19,3 +19,12 @@ def test_health_endpoint():
         response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}
+
+
+def test_demo_ui_endpoint():
+    app = build_app()
+    with TestClient(app) as client:
+        response = client.get("/demo")
+    assert response.status_code == 200
+    assert "text/html" in response.headers["content-type"]
+    assert "Run Sample Job" in response.text
