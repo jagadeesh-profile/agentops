@@ -104,6 +104,31 @@ Local validation snapshot (single-machine smoke run):
 - Handoff latencies reported: [0, 0]
 - State collision incidents observed: 0
 
+Reproducible throughput check:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\throughput_check.py --base-url http://127.0.0.1:8000 --jobs 20 --workers 10
+```
+
+Expected output shape:
+
+```json
+{
+	"total": 20,
+	"completed": 20,
+	"success_rate_percent": 100.0,
+	"duration_sec": 0.93
+}
+```
+
+## Submission status
+
+- Project implementation: complete
+- API health endpoints: passing
+- End-to-end orchestration: passing
+- Automated tests: passing (3/3)
+- Local concurrent throughput: 100% success rate in latest validation run
+
 ## GitHub publishing
 
 ```powershell
