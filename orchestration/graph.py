@@ -25,14 +25,14 @@ def build_graph():
 
     graph.add_node("retrieve", retriever.run)
     graph.add_node("analyze", analyst.run)
-    graph.add_node("critique", critic.run)
+    graph.add_node("review", critic.run)       # node name differs from state key "critique"
     graph.add_node("synthesize", synthesizer.run)
 
     graph.set_entry_point("retrieve")
     graph.add_edge("retrieve", "analyze")
-    graph.add_edge("analyze", "critique")
+    graph.add_edge("analyze", "review")
     graph.add_conditional_edges(
-        "critique",
+        "review",
         lambda state: "synthesize" if state["iteration"] >= 1 else "retrieve",
         {"synthesize": "synthesize", "retrieve": "retrieve"}
     )

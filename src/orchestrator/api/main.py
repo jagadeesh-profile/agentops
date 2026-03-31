@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import asyncio
+import html
+import json
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Form, HTTPException
 from fastapi.responses import HTMLResponse
 
 from orchestrator.agents import CritiqueAgent, RetrievalAgent, SynthesisAgent
@@ -124,23 +127,25 @@ DEMO_HTML = """
         <div class="grid">
             <section class="card">
                 <h2 style="margin-top:0;">Run Sample Job</h2>
+                <form id="runForm" method="post" action="/demo/run">
                 <div class="row">
                     <div>
                         <label for="session">Session ID</label>
-                        <input id="session" value="demo-session-1" />
+                        <input id="session" name="session_id" value="demo-session-1" />
                     </div>
                     <div>
                         <label for="topic">Topic</label>
-                        <input id="topic" value="How multi-agent systems reduce research latency?" />
+                        <input id="topic" name="topic" value="How multi-agent systems reduce research latency?" />
                     </div>
                 </div>
 
                 <label for="constraints">Constraints (one per line)</label>
-                <textarea id="constraints">Focus on measurable outcomes\nInclude deployment practicality</textarea>
+                <textarea id="constraints" name="constraints">Focus on measurable outcomes\nInclude deployment practicality</textarea>
 
                 <div class="samples" id="samples"></div>
-                <button id="runBtn">Submit Job</button>
+                <button id="runBtn" type="submit">Submit Job</button>
                 <div id="jobStatus" class="status">idle</div>
+                </form>
             </section>
 
             <section class="card">
@@ -178,6 +183,7 @@ DEMO_HTML = """
         const outputEl = document.getElementById("output");
         const statusEl = document.getElementById("jobStatus");
         const runBtn = document.getElementById("runBtn");
+        const runForm = document.getElementById("runForm");
         const samplesEl = document.getElementById("samples");
         const sessionEl = document.getElementById("session");
         const topicEl = document.getElementById("topic");
@@ -198,9 +204,19 @@ DEMO_HTML = """
                 .filter((line) => line.length > 0);
         }
 
+        async function apiFetch(url, options = {}, timeoutMs = 10000) {
+            const controller = new AbortController();
+            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            try {
+                return await fetch(url, { ...options, signal: controller.signal });
+            } finally {
+                clearTimeout(timer);
+            }
+        }
+
         async function loadHealth() {
             try {
-                const response = await fetch("/health");
+                const response = await apiFetch("/health", {}, 5000);
                 const data = await response.json();
                 healthEl.textContent = JSON.stringify(data, null, 2);
             } catch (error) {
@@ -211,7 +227,13 @@ DEMO_HTML = """
         async function pollJob(jobId) {
             const maxAttempts = 40;
             for (let i = 0; i < maxAttempts; i += 1) {
-                const response = await fetch(`/jobs/${jobId}`);
+                const response = await apiFetch(`/jobs/${jobId}`, {}, 7000);
+                if (!response.ok) {
+                    const err = await response.text();
+                    outputEl.textContent = "Polling failed:\n" + err;
+                    setStatus("error", "err");
+                    return;
+                }
                 const data = await response.json();
                 outputEl.textContent = JSON.stringify(data, null, 2);
 
@@ -233,20 +255,32 @@ DEMO_HTML = """
         async function submitJob() {
             runBtn.disabled = true;
             try {
+                if (window.location.protocol !== "http:" && window.location.protocol !== "https:") {
+                    outputEl.textContent = "Open the UI from the API server (http://127.0.0.1:8000/demo), not as a local file.";
+                    setStatus("error", "err");
+                    return;
+                }
+
                 const payload = {
                     session_id: sessionEl.value.trim(),
                     topic: topicEl.value.trim(),
                     constraints: constraintsFromText(constraintsEl.value),
                 };
 
+                if (payload.session_id.length < 3 || payload.topic.length < 3) {
+                    outputEl.textContent = "Session ID and Topic must be at least 3 characters.";
+                    setStatus("invalid input", "err");
+                    return;
+                }
+
                 outputEl.textContent = "Submitting job...";
                 setStatus("queued", "run");
 
-                const response = await fetch("/jobs", {
+                const response = await apiFetch("/jobs", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify(payload),
-                });
+                }, 10000);
 
                 if (!response.ok) {
                     const err = await response.text();
@@ -279,7 +313,10 @@ DEMO_HTML = """
             samplesEl.appendChild(chip);
         });
 
-        runBtn.addEventListener("click", submitJob);
+        runForm.addEventListener("submit", (event) => {
+            event.preventDefault();
+            submitJob();
+        });
         loadHealth();
     </script>
 </body>
@@ -325,6 +362,28 @@ def build_app() -> FastAPI:
     @app.get("/demo", response_class=HTMLResponse)
     async def demo_ui() -> str:
         return DEMO_HTML
+
+    @app.post("/demo/run", response_class=HTMLResponse)
+    async def demo_run_form(
+        session_id: str = Form(...),
+        topic: str = Form(...),
+        constraints: str = Form(""),
+    ) -> str:
+        request = ResearchRequest(
+            session_id=session_id.strip(),
+            topic=topic.strip(),
+            constraints=[line.strip() for line in constraints.splitlines() if line.strip()],
+        )
+        result = await asyncio.to_thread(workflow.run, request)
+        rendered = html.escape(json.dumps(result.model_dump(), indent=2))
+        return (
+            "<!doctype html><html><head><meta charset='utf-8'><title>Demo Result</title>"
+            "<style>body{font-family:Segoe UI,Trebuchet MS,sans-serif;padding:20px;background:#0b1a24;color:#eaf2f8;}"
+            "a{color:#ffbf69;}pre{background:#0d202d;border:1px solid #23485e;padding:12px;border-radius:8px;"
+            "white-space:pre-wrap;}</style></head><body>"
+            "<h2>Sample Job Result</h2><p><a href='/demo'>Back to Demo UI</a></p>"
+            f"<pre>{rendered}</pre></body></html>"
+        )
 
     @app.get("/health")
     async def health() -> dict[str, str]:

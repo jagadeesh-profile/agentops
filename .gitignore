@@ -7,6 +7,11 @@ __pycache__/
 venv/
 .env
 data/
+*.db
 .coverage
 htmlcov/
 .vscode/
+dist/
+build/
+*.egg-info/
+.DS_Store
