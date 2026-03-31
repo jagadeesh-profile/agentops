@@ -1,126 +1,104 @@
-# AgentOps — Autonomous Multi-Agent Research & Synthesis Platform
+# Multi-Agent LLM Orchestration Platform
 
-A production-grade multi-agent orchestration system that autonomously gathers, cross-references, and synthesizes research from multiple sources — no human in the loop required.
+A production-style reference implementation of a multi-agent research orchestration system using LangGraph state-machine flow, CrewAI-inspired role specialization, AutoGen-style inter-agent messaging, persistent memory, and a FastAPI async orchestration API.
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat&logo=python)
-![LangGraph](https://img.shields.io/badge/LangGraph-0.2+-orange?style=flat)
-![CrewAI](https://img.shields.io/badge/CrewAI-0.28+-green?style=flat)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.110+-teal?style=flat&logo=fastapi)
-![Docker](https://img.shields.io/badge/Docker-ready-blue?style=flat&logo=docker)
+## Why this project
 
----
+Manual research workflows are slow and brittle when information must be gathered, cross-referenced, and synthesized across sources. This project demonstrates a self-contained orchestration layer that can automate retrieval, synthesis, and critique with concurrent session safety and measurable handoff latency.
 
-## What It Does
+## Highlights
 
-AgentOps coordinates four specialized AI agents to handle complex research tasks end-to-end:
-
-| Agent | Role |
-|-------|------|
-| **Retriever** | Fetches relevant documents from web + vector store |
-| **Analyst** | Extracts key facts and cross-references sources |
-| **Critic** | Validates claims, flags contradictions |
-| **Synthesizer** | Produces final structured report |
+- 4-agent style pipeline design (orchestrator + retrieval + synthesis + critique)
+- LangGraph-first workflow integration with fallback execution path
+- CrewAI-style role separation for specialist agents
+- AutoGen-style message handoff bus with latency tracking
+- Persistent memory via SQLite with session and agent partitioning
+- Tool-calling interfaces: web search, vector retrieval, code execution
+- FastAPI REST service with async job queue and concurrent workers
+- Dockerized deployment for reproducible environments
 
 ## Architecture
 
-```
-User Query
-    │
-    ▼
-LangGraph State Machine
-    │
-    ├─► Retriever Agent  (ChromaDB + Web Search)
-    │         │
-    ├─► Analyst Agent    (GPT-4 / LLaMA 3)
-    │         │
-    ├─► Critic Agent     (Validation + Guardrails)
-    │         │
-    └─► Synthesizer Agent ──► Final Report
-              │
-              ▼
-        FastAPI Response
-```
+1. Client submits a research request to FastAPI.
+2. Request is queued in async workers.
+3. Orchestrator runs retrieval -> synthesis -> critique as a state-machine.
+4. Agent handoffs are tracked through message bus latency metrics.
+5. Artifacts and summaries are returned through the job endpoint.
+6. Agent memory is persisted in SQLite for cross-run context.
 
-## Screenshots
+## Project structure
 
-### Agent workflow running
-![Agent Run](docs/screenshots/agent_run.png)
+- src/orchestrator/api/main.py: API and DI wiring
+- src/orchestrator/workflow.py: orchestration graph and fallback flow
+- src/orchestrator/queue.py: async worker queue
+- src/orchestrator/agents/: specialized agents
+- src/orchestrator/tools/: pluggable tools
+- src/orchestrator/memory/store.py: persistent agent memory
+- tests/: API and workflow tests
 
-### FastAPI Swagger UI
-![API Docs](docs/screenshots/api_docs.png)
+## Quickstart
 
-### Sample synthesized output
-![Output](docs/screenshots/output_sample.png)
+### 1) Create environment and install
 
-## Results
-
-| Metric | Value |
-|--------|-------|
-| Research workflow time reduction | ~70% vs manual |
-| Agent handoff latency | < 3 seconds |
-| Concurrent sessions (zero state collision) | ✓ |
-| Agents in pipeline | 4 |
-
-## Project Structure
-
-```
-agentops/
-├── agents/
-│   ├── retriever.py        # Document retrieval + web search
-│   ├── analyst.py          # Fact extraction + cross-referencing
-│   ├── critic.py           # Validation + guardrails
-│   └── synthesizer.py      # Final report generation
-├── orchestration/
-│   ├── graph.py            # LangGraph state machine definition
-│   └── memory.py           # Persistent agent memory (ChromaDB)
-├── api/
-│   └── main.py             # FastAPI endpoints + async job queue
-├── tools/
-│   ├── search.py           # Web search tool
-│   └── vector_store.py     # ChromaDB wrapper
-├── tests/
-│   └── test_pipeline.py
-├── docker/
-│   └── Dockerfile
-├── docs/
-│   └── screenshots/
-├── .env.example
-├── requirements.txt
-└── README.md
-```
-
-## Quick Start
-
-```bash
-# 1. Clone the repo
-git clone https://github.com/jagadeeshpamidi/agentops.git
-cd agentops
-
-# 2. Set up environment
-python -m venv venv
-source venv/bin/activate
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-
-# 3. Add your API keys
-cp .env.example .env
-# Edit .env: OPENAI_API_KEY, TAVILY_API_KEY
-
-# 4. Run the API
-uvicorn api.main:app --reload
-
-# 5. Send a research query
-curl -X POST http://localhost:8000/research \
-  -H "Content-Type: application/json" \
-  -d '{"query": "Latest advances in RAG systems 2025"}'
+copy .env.example .env
 ```
 
-## Tech Stack
+### 2) Run locally
 
-- **Orchestration:** LangGraph, CrewAI, AutoGen
-- **LLMs:** GPT-4, LLaMA 3 (via Ollama)
-- **Vector Memory:** ChromaDB
-- **Serving:** FastAPI + async job queue
-- **Deployment:** Docker
+```powershell
+uvicorn orchestrator.api.main:app --host 0.0.0.0 --port 8000 --app-dir src
+```
 
----
-Built by [Jagadeesh Pamidi](https://github.com/jagadeeshpamidi)
+### 3) Call API
+
+```powershell
+curl -X POST http://localhost:8000/jobs -H "Content-Type: application/json" -d '{"session_id":"demo-1","topic":"How multi-agent systems reduce research latency?","constraints":["focus on measurable outcomes"]}'
+```
+
+Then poll:
+
+```powershell
+curl http://localhost:8000/jobs/<job_id>
+```
+
+## Docker
+
+```powershell
+docker compose up --build
+```
+
+## Benchmark notes
+
+Use this section to add your measured outputs before posting:
+
+- Manual baseline research time: TODO
+- Automated pipeline time: TODO
+- Time reduction percentage: TODO
+- Mean handoff latency (ms): TODO
+- Concurrent sessions tested: TODO
+- State collision incidents: TODO (target: 0)
+
+## GitHub publishing
+
+```powershell
+git init
+git add .
+git commit -m "feat: initial multi-agent llm orchestration platform"
+git branch -M main
+git remote add origin https://github.com/<your-username>/multi-agent-llm-orchestration-platform.git
+git push -u origin main
+```
+
+## Resume alignment
+
+This implementation is structured to support resume bullets around:
+
+- LangGraph orchestration
+- CrewAI-style delegation by agent role
+- AutoGen-style inter-agent handoffs and latency tracking
+- Persistent memory and tool-calling interfaces
+- FastAPI async job orchestration and Dockerized deployment
