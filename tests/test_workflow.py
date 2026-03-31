@@ -27,4 +27,5 @@ def test_workflow_runs_end_to_end(tmp_path):
 
     assert result.session_id == "session-1"
     assert len(result.artifacts) == 3
+    assert len(result.handoff_latencies_ms) == 2
     assert result.total_latency_ms >= 0

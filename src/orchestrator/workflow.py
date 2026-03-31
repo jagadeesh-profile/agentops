@@ -5,15 +5,15 @@ from typing import TypedDict
 
 from orchestrator.agents import CritiqueAgent, RetrievalAgent, SynthesisAgent
 from orchestrator.messaging import AutoGenMessageBus
-from orchestrator.models import AgentMessage, OrchestrationResult, ResearchRequest
+from orchestrator.models import AgentArtifact, AgentMessage, OrchestrationResult, ResearchRequest
 
 
 class WorkflowState(TypedDict):
     session_id: str
     topic: str
-    retrieval: str
-    synthesis: str
-    critique: str
+    retrieval_artifact: AgentArtifact
+    synthesis_artifact: AgentArtifact
+    critique_artifact: AgentArtifact
 
 
 class MultiAgentWorkflow:
@@ -45,30 +45,34 @@ class MultiAgentWorkflow:
                     sender="retrieval",
                     recipient="synthesis",
                     content=artifact.content,
-                    metadata={"latency_ms": artifact.latency_ms},
+                    metadata={"latency_ms": artifact.latency_ms, "session_id": state["session_id"]},
                 )
             )
-            return {"retrieval": artifact.content}
+            return {"retrieval_artifact": artifact}
 
         def synthesis_node(state: WorkflowState):
             artifact = self.synthesis_agent.run(
-                state["session_id"], state["topic"], prior_output=state.get("retrieval", "")
+                state["session_id"],
+                state["topic"],
+                prior_output=state["retrieval_artifact"].content,
             )
             self.message_bus.send(
                 AgentMessage(
                     sender="synthesis",
                     recipient="critique",
                     content=artifact.content,
-                    metadata={"latency_ms": artifact.latency_ms},
+                    metadata={"latency_ms": artifact.latency_ms, "session_id": state["session_id"]},
                 )
             )
-            return {"synthesis": artifact.content}
+            return {"synthesis_artifact": artifact}
 
         def critique_node(state: WorkflowState):
             artifact = self.critique_agent.run(
-                state["session_id"], state["topic"], prior_output=state.get("synthesis", "")
+                state["session_id"],
+                state["topic"],
+                prior_output=state["synthesis_artifact"].content,
             )
-            return {"critique": artifact.content}
+            return {"critique_artifact": artifact}
 
         graph.add_node("retrieval", retrieval_node)
         graph.add_node("synthesis", synthesis_node)
@@ -82,41 +86,41 @@ class MultiAgentWorkflow:
     def run(self, req: ResearchRequest) -> OrchestrationResult:
         start = time.perf_counter()
 
-        retrieval_artifact = self.retrieval_agent.run(req.session_id, req.topic)
-        self.message_bus.send(
-            AgentMessage(
-                sender="retrieval",
-                recipient="synthesis",
-                content=retrieval_artifact.content,
-                metadata={"latency_ms": retrieval_artifact.latency_ms},
-            )
-        )
-
-        synthesis_artifact = self.synthesis_agent.run(
-            req.session_id, req.topic, prior_output=retrieval_artifact.content
-        )
-        self.message_bus.send(
-            AgentMessage(
-                sender="synthesis",
-                recipient="critique",
-                content=synthesis_artifact.content,
-                metadata={"latency_ms": synthesis_artifact.latency_ms},
-            )
-        )
-
-        critique_artifact = self.critique_agent.run(
-            req.session_id, req.topic, prior_output=synthesis_artifact.content
-        )
-
         if self._compiled_graph is not None:
-            _ = self._compiled_graph.invoke(
+            state = self._compiled_graph.invoke(
                 {
                     "session_id": req.session_id,
                     "topic": req.topic,
-                    "retrieval": retrieval_artifact.content,
-                    "synthesis": synthesis_artifact.content,
-                    "critique": critique_artifact.content,
                 }
+            )
+            retrieval_artifact = state["retrieval_artifact"]
+            synthesis_artifact = state["synthesis_artifact"]
+            critique_artifact = state["critique_artifact"]
+        else:
+            retrieval_artifact = self.retrieval_agent.run(req.session_id, req.topic)
+            self.message_bus.send(
+                AgentMessage(
+                    sender="retrieval",
+                    recipient="synthesis",
+                    content=retrieval_artifact.content,
+                    metadata={"latency_ms": retrieval_artifact.latency_ms, "session_id": req.session_id},
+                )
+            )
+
+            synthesis_artifact = self.synthesis_agent.run(
+                req.session_id, req.topic, prior_output=retrieval_artifact.content
+            )
+            self.message_bus.send(
+                AgentMessage(
+                    sender="synthesis",
+                    recipient="critique",
+                    content=synthesis_artifact.content,
+                    metadata={"latency_ms": synthesis_artifact.latency_ms, "session_id": req.session_id},
+                )
+            )
+
+            critique_artifact = self.critique_agent.run(
+                req.session_id, req.topic, prior_output=synthesis_artifact.content
             )
 
         return OrchestrationResult(
@@ -126,5 +130,5 @@ class MultiAgentWorkflow:
             critique=critique_artifact.content,
             artifacts=[retrieval_artifact, synthesis_artifact, critique_artifact],
             total_latency_ms=int((time.perf_counter() - start) * 1000),
-            handoff_latencies_ms=self.message_bus.handoff_latencies(),
+            handoff_latencies_ms=self.message_bus.handoff_latencies(req.session_id),
         )

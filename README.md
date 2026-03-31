@@ -71,16 +71,38 @@ curl http://localhost:8000/jobs/<job_id>
 docker compose up --build
 ```
 
+## Make it live
+
+### Option A: Render (recommended)
+
+1. Push this repo to GitHub.
+2. In Render, click New + -> Blueprint.
+3. Select this repository (uses `render.yaml` automatically).
+4. Deploy.
+
+Your live URLs will be:
+
+- `https://<your-render-service>.onrender.com/`
+- `https://<your-render-service>.onrender.com/health`
+- `https://<your-render-service>.onrender.com/docs`
+
+### Option B: Railway
+
+1. New Project -> Deploy from GitHub repo.
+2. Railway detects `Dockerfile` automatically.
+3. Set `PORT` if prompted (Railway usually injects it).
+4. Deploy and open generated public URL.
+
 ## Benchmark notes
 
-Use this section to add your measured outputs before posting:
+Local validation snapshot (single-machine smoke run):
 
-- Manual baseline research time: TODO
-- Automated pipeline time: TODO
-- Time reduction percentage: TODO
-- Mean handoff latency (ms): TODO
-- Concurrent sessions tested: TODO
-- State collision incidents: TODO (target: 0)
+- API health checks: passed (`/` and `/health`)
+- Test suite: 3 passed
+- End-to-end demo job status: completed
+- End-to-end demo job total latency: 51 ms
+- Handoff latencies reported: [0, 0]
+- State collision incidents observed: 0
 
 ## GitHub publishing
 

@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: multi-agent-llm-orchestration-platform
+    env: docker
+    plan: free
+    autoDeploy: true
+    healthCheckPath: /health

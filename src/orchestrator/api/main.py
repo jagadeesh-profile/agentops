@@ -48,6 +48,10 @@ def build_app() -> FastAPI:
 
     app = FastAPI(title=settings.app_name, lifespan=lifespan)
 
+    @app.get("/")
+    async def root() -> dict[str, str]:
+        return {"service": settings.app_name, "status": "running", "docs": "/docs"}
+
     @app.get("/health")
     async def health() -> dict[str, str]:
         return {"status": "ok"}
